@@ -1,6 +1,6 @@
 const express = require('express')
 const router = express.Router()
-const { getNameAndSection, getTeacherEmail } = require('../../controllers/classroom/classroom.controller')
+const { getNameAndSection, getTeacherEmail, listSubjects } = require('../../controllers/classroom/classroom.controller')
 
 router.get('/', (req, res) => {
     res.send("From Classroom");
@@ -17,5 +17,9 @@ router.post('/courses', (req, res) => {
 router.get('/teacher', (req,res) => {
     getTeacherEmail(req,res)
 })
+
+router.get('/subjects/:id', (req, res) => {
+    listSubjects(req,res)
+});
 
 module.exports = router

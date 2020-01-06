@@ -3,7 +3,37 @@ const fs = require('fs');
 const readline = require('readline');
 const { google } = require('googleapis');
 const Course = require('../../models/Users').Course;
-const { authorize } = require('./token.controller')
+const { authorize } = require('./token.controller');
+const DashBoard = require('../../models/Users').DashBoard;
+
+// Adding DashBoard API
+
+function setDashBoardDetails(req, res) {
+    console.log("Inside setDashBoardDetails API");
+    console.log("req.body", req.body);
+    Course.find({ ownerID: req.body.ownerID }, (err, course) => {
+        if (err) {
+            console.log("err in setGradeDetails POST ", err)
+        } else {
+            let newDetails = new DashBoard({
+                ownerID: req.body.ownerID,
+                grade: req.body.grade,
+                gradeName: req.body.gradeName,
+                class: req.body.class,
+                date: req.body.date,
+                time: req.body.time,
+                day: req.body.day,
+                month: req.body.month,
+                year: req.body.year,
+                schedulingType: req.body.schedulingType
+            })
+            await newDetails.save()
+            .then()
+        }
+    })
+}
+
+// Dashboard API
 
 //checking
 
@@ -26,6 +56,29 @@ function listTopics(auth) {
     });
 }
 
+// Get Subjects taken by a teacher in roster page API
+
+function listSubjects(req, res) {
+    console.log("Inside listSubjects API");
+    console.log("req.body", req.params);
+    Course.find({ ownerID: req.params.id, subject: { $exists: true } }, (err, course) => {
+        if (!course) {
+            console.log("Inside not of course")
+            addCourse(req, res);
+        } else if (err) {
+            console.log("Err in listSubjects ", err)
+        } else {
+            console.log(course);
+            const name = course.map(course => course.name + ' : ' + course.subject)
+            // const subject = [] = course.map(course => course.subject).toLocaleString()
+            // const nameObj = {data:name}
+            res.send(name);
+        }
+    })
+}
+
+// Get Subjects taken by a teacher in roster page API
+
 //correct ide
 function listCourses(auth) {
     const classroom = google.classroom({ version: 'v1', auth });
@@ -35,7 +88,7 @@ function listCourses(auth) {
     }, (err, res) => {
         if (err) return console.error('The API returned an error: ' + err);
         const courses = res.data.courses;
-        console.log("COURSES", courses)
+        // console.log("COURSES", courses)
         if (courses && courses.length) {
             console.log('Courses:');
             courses.forEach((course) => {
@@ -98,8 +151,8 @@ function listTeachers(auth) {
 // Get teacher email for google classroom page in roster
 
 function getTeacherEmail(req, res) {
-    Course.findOne({ name: req.body.name, section: req.body.section }, (err,course) => {
-        if(err) {
+    Course.findOne({ name: req.body.name, section: req.body.section }, (err, course) => {
+        if (err) {
             console.log(err)
         } else {
             fs.readFile('credentials.json', (err, content) => {
@@ -107,8 +160,8 @@ function getTeacherEmail(req, res) {
                 authorize(JSON.parse(content), listTeachers);
             })
         }
-    }).then( course => res.status(200).json(course))
-    .catch(err => console.log(err))
+    }).then(course => res.status(200).json(course))
+        .catch(err => console.log(err))
 }
 
 // End teacher email for google classroom page in roster
@@ -138,7 +191,8 @@ function addCourse(req, res) {
             let newCourse = new Course({
                 ownerID: req.body.ownerID,
                 name: req.body.name,
-                section: req.body.section
+                section: req.body.section,
+                subject: req.body.subject
             })
             await newCourse.save()
                 .then(fs.readFile('credentials.json', (err, content) => {
@@ -151,7 +205,7 @@ function addCourse(req, res) {
     })
 }
 
-function addCourseToUI(auth) {
+function addCourseToUIm(auth) {
     console.log("Inside UIADD")
     const classroom = google.classroom({ version: 'v1', auth });
     Course.findOne({}, { '_id': 0, }, { sort: '-_id' }, (err, course) => {
@@ -169,6 +223,51 @@ function addCourseToUI(auth) {
                     console.log("Error while creating Course ", err)
                 } else {
                     console.log("Course created ", res.data)
+                }
+            })
+        } else {
+            console.log("No records found")
+        }
+    })
+}
+
+function addCourseToUI(auth) {
+    console.log("Inside UIADD")
+    const classroom = google.classroom({ version: 'v1', auth });
+    Course.find().sort({ _id: -1 }).limit(1).exec((err, course) => {
+        console.log("COuurse", course)
+        if (course) {
+            classroom.courses.create({
+                requestBody: {
+                    ownerId: course.map(course => course.ownerID).toLocaleString(),
+                    name: course.map(course => course.name).toLocaleString(),
+                    section: course.map(course => course.section).toLocaleString()
+                }
+            }, (err, res) => {
+                if (err) {
+                    console.log("Error while creating Course ", err)
+                } else {
+                    console.log("Course created ", res.data.id)
+                    classroom.courses.aliases.create({
+                        courseId: res.data.id,
+                        requestBody: { alias: `p:${res.data.name} ${res.data.section}` }
+                    }, (err, alias) => {
+                        if (err) {
+                            console.log("err while creating alias", err)
+                        } else {
+                            console.log("Alias created", alias.data.alias)
+                            Course.findOneAndUpdate({ name: res.data.name, section: res.data.section },
+                                { $set: { alias: alias.data.alias } },
+                                (err, gotCourse) => {
+                                    if (err) {
+                                        console.log("err while updating alias name ", err)
+                                    } else {
+                                        console.log("ALias added in db ", gotCourse)
+                                    }
+                                })
+                        }
+                    }
+                    )
                 }
             })
         } else {
@@ -226,5 +325,7 @@ function deleteCourseToUI(auth) {
 }
 
 
-module.exports = { listTeachers, listAnnouncements, listCourses, 
-    addCourseToUI, addCourse, getNameAndSection, getTeacherEmail }
+module.exports = {
+    listTeachers, listAnnouncements, listCourses,
+    addCourseToUI, addCourse, getNameAndSection, getTeacherEmail, listSubjects
+}
